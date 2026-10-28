@@ -1,0 +1,1702 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Razcal Animation Studio - MP4 Creator</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts matching retro/pixel/cute aesthetic -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700&family=Inter:wght@400;500;600;700&family=Press+Start+2P&family=Rubik+Bubbles&family=Silkscreen:wght@400;700&family=VT323&display=swap" rel="stylesheet">
+    <!-- Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <!-- mp4-muxer for genuine hardware-accelerated H.264 MP4 output via WebCodecs -->
+    <script src="https://cdn.jsdelivr.net/npm/mp4-muxer@5.1.3/build/mp4-muxer.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+        }
+        /* Custom scrollbar for control panel */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1e293b;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 9999px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #64748b;
+        }
+        /* Ensure fonts are pre-rendered so HTML5 canvas picks them up immediately */
+        .font-preload {
+            position: absolute;
+            left: -9999px;
+            top: -9999px;
+            visibility: hidden;
+            pointer-events: none;
+        }
+        canvas {
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+        }
+        input[type="range"] {
+            accent-color: #ec4899;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col lg:flex-row overflow-x-hidden">
+
+    <!-- Hidden element to force browser to load custom Google Fonts before Canvas draw -->
+    <div class="font-preload">
+        <span style="font-family: 'Silkscreen'">A</span>
+        <span style="font-family: 'Press Start 2P'">A</span>
+        <span style="font-family: 'VT323'">A</span>
+        <span style="font-family: 'Rubik Bubbles'">A</span>
+        <span style="font-family: 'Fredoka'">A</span>
+    </div>
+
+    <!-- LEFT / TOP: Live 9:16 Canvas Preview Area -->
+    <div class="lg:w-7/12 xl:w-2/3 bg-slate-950 flex flex-col items-center justify-between p-4 lg:p-8 relative border-b lg:border-b-0 lg:border-r border-slate-800 select-none">
+        
+        <!-- Top Status Bar -->
+        <div class="w-full max-w-2xl flex flex-wrap items-center justify-between gap-2 z-10">
+            <div class="flex items-center gap-2.5">
+                <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-pink-600 to-amber-400 flex items-center justify-center shadow-lg shadow-pink-500/20">
+                    <i class="ph-fill ph-sparkle text-white text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-base sm:text-lg tracking-tight text-white flex items-center gap-2">
+                        Razcal Social Studio
+                        <span class="text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-pink-500/20 text-pink-300 border border-pink-500/30">1080×1920 HD</span>
+                    </h1>
+                    <p class="text-xs text-slate-400">Real-time 9:16 Vertical Video Generator</p>
+                </div>
+            </div>
+
+            <!-- CORS / Asset Mode Indicator -->
+            <div id="assetStatusBadge" class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs text-slate-300">
+                <span id="statusDot" class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span id="statusText">Ready to Record</span>
+            </div>
+        </div>
+
+        <!-- Center 9:16 Canvas Container -->
+        <div class="my-4 relative flex items-center justify-center w-full flex-1 max-h-[72vh]">
+            <div class="relative aspect-[9/16] h-full max-h-[68vh] sm:max-h-[72vh] rounded-2xl overflow-hidden ring-4 ring-slate-800 bg-slate-900 flex items-center justify-center">
+                <canvas id="stageCanvas" width="1080" height="1920" class="w-full h-full object-contain"></canvas>
+
+                <!-- Recording Overlay Badge -->
+                <div id="recordingOverlay" class="hidden absolute top-4 left-4 right-4 bg-slate-950/90 backdrop-blur-md border border-pink-500/40 rounded-xl p-3 shadow-2xl flex flex-col gap-2">
+                    <div class="flex items-center justify-between text-xs font-semibold">
+                        <span class="flex items-center gap-2 text-pink-400">
+                            <span class="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping"></span>
+                            <span id="recordingStateLabel">Encoding MP4 Video...</span>
+                        </span>
+                        <span id="recordingTimeLabel" class="text-white font-mono">0%</span>
+                    </div>
+                    <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                        <div id="recordingProgressBar" class="bg-gradient-to-r from-pink-500 to-amber-400 h-full w-0 transition-all duration-75"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom Quick Playback & Export Bar -->
+        <div class="w-full max-w-xl bg-slate-900/90 backdrop-blur border border-slate-800 rounded-2xl p-3 flex flex-wrap items-center justify-between gap-3 z-10 shadow-xl">
+            <div class="flex items-center gap-2">
+                <button id="restartTypingBtn" class="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 text-xs sm:text-sm font-medium flex items-center gap-2 transition cursor-pointer" title="Restart Typewriter Effect">
+                    <i class="ph-bold ph-arrow-counter-clockwise text-pink-400 text-base"></i>
+                    <span>Replay Typing</span>
+                </button>
+                <button id="togglePauseBtn" class="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 text-xs sm:text-sm font-medium flex items-center gap-2 transition cursor-pointer">
+                    <i id="pauseIcon" class="ph-bold ph-pause text-amber-400 text-base"></i>
+                    <span id="pauseText">Pause</span>
+                </button>
+            </div>
+
+            <div class="flex items-center gap-2 flex-1 sm:flex-initial justify-end">
+                <div class="flex items-center bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5">
+                    <label for="durationSelect" class="text-xs text-slate-400 mr-2">Length:</label>
+                    <select id="durationSelect" class="bg-transparent text-xs sm:text-sm font-semibold text-white focus:outline-none cursor-pointer">
+                        <option value="4" class="bg-slate-900">4 sec</option>
+                        <option value="6" class="bg-slate-900" selected>6 sec</option>
+                        <option value="8" class="bg-slate-900">8 sec</option>
+                        <option value="10" class="bg-slate-900">10 sec</option>
+                        <option value="12" class="bg-slate-900">12 sec</option>
+                    </select>
+                </div>
+
+                <button id="exportVideoBtn" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-pink-600 to-rose-500 hover:from-pink-500 hover:to-rose-400 active:scale-95 text-white font-semibold text-xs sm:text-sm flex items-center gap-2 shadow-lg shadow-pink-600/30 transition cursor-pointer">
+                    <i class="ph-bold ph-video-camera text-base"></i>
+                    <span>Save as MP4</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- RIGHT / BOTTOM: Customization Controls Sidebar -->
+    <div class="lg:w-5/12 xl:w-1/3 bg-slate-900 flex flex-col h-auto lg:h-screen lg:overflow-y-auto">
+        
+        <!-- Tabs Navigation -->
+        <div class="sticky top-0 z-20 bg-slate-900/95 backdrop-blur border-b border-slate-800 px-5 pt-4">
+            <div class="grid grid-cols-3 gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 mb-3">
+                <button data-tab="tab-text" class="tab-btn active-tab py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 bg-pink-600 text-white shadow transition cursor-pointer">
+                    <i class="ph-bold ph-chat-centered-text text-sm"></i>
+                    <span>Text & Bubble</span>
+                </button>
+                <button data-tab="tab-motion" class="tab-btn py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 text-slate-400 hover:text-white transition cursor-pointer">
+                    <i class="ph-bold ph-person-simple-tai-chi text-sm"></i>
+                    <span>Float & Shadow</span>
+                </button>
+                <button data-tab="tab-assets" class="tab-btn py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 text-slate-400 hover:text-white transition cursor-pointer">
+                    <i class="ph-bold ph-image text-sm"></i>
+                    <span>Backgrounds</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Controls Content Container -->
+        <div class="p-5 space-y-6 flex-1">
+
+            <!-- TAB 1: TEXT & SPEECH BUBBLE -->
+            <div id="tab-text" class="tab-panel space-y-5">
+                <!-- Desired Text Input -->
+                <div class="bg-slate-950/60 border border-slate-800 rounded-2xl p-4 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <label for="messageInput" class="text-xs font-bold uppercase tracking-wider text-pink-400 flex items-center gap-1.5">
+                            <i class="ph-fill ph-sparkle"></i>
+                            Custom Message Text
+                        </label>
+                        <span class="text-[11px] text-slate-400">Press Enter for new line</span>
+                    </div>
+                    <textarea id="messageInput" rows="3" class="w-full rounded-xl bg-slate-900 border border-slate-700 focus:border-pink-500 focus:ring-1 focus:ring-pink-500 text-white p-3 text-sm font-medium leading-relaxed outline-none transition" placeholder="Type your message here...">YOU ARE WHO
+YOU DREAM OF</textarea>
+
+                    <!-- Quick Preset Phrases -->
+                    <div class="flex flex-wrap gap-1.5 pt-1">
+                        <button class="preset-phrase text-[11px] px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition cursor-pointer" data-text="YOU ARE WHO&#10;YOU DREAM OF">You Are Who You Dream Of</button>
+                        <button class="preset-phrase text-[11px] px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition cursor-pointer" data-text="PROTECT YOUR&#10;INNER PEACE">Protect Your Inner Peace</button>
+                        <button class="preset-phrase text-[11px] px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition cursor-pointer" data-text="BREATHE IN...&#10;LET IT GO">Breathe In... Let It Go</button>
+                        <button class="preset-phrase text-[11px] px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition cursor-pointer" data-text="GOOD THINGS&#10;ARE COMING ✨">Good Things Are Coming</button>
+                    </div>
+                </div>
+
+                <!-- Typewriter Settings -->
+                <div class="bg-slate-950/60 border border-slate-800 rounded-2xl p-4 space-y-4">
+                    <h3 class="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                        <i class="ph-bold ph-keyboard text-pink-400"></i>
+                        Typewriter Effect & Typography
+                    </h3>
+
+                    <!-- Font Family -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">Font Style</label>
+                            <select id="fontFamilySelect" class="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-xs sm:text-sm text-white focus:border-pink-500 outline-none">
+                                <option value="'Silkscreen', monospace" selected>Silkscreen (Retro Pixel)</option>
+                                <option value="'Press Start 2P', monospace">Press Start 2P (8-Bit)</option>
+                                <option value="'VT323', monospace">VT323 (Arcade Tall)</option>
+                                <option value="'Rubik Bubbles', system-ui">Rubik Bubbles (Puffy)</option>
+                                <option value="'Fredoka', sans-serif">Fredoka Bold (Rounded)</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">Typing Loop Mode</label>
+                            <select id="typingLoopMode" class="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-xs sm:text-sm text-white focus:border-pink-500 outline-none">
+                                <option value="hold" selected>Type Once & Hold</option>
+                                <option value="loop">Type, Pause & Repeat</option>
+                                <option value="instant">Show Full Text Instantly</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Typing Speed & Font Size -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <div class="flex justify-between text-xs mb-1">
+                                <span class="text-slate-400">Typing Speed</span>
+                                <span id="typingSpeedVal" class="text-pink-400 font-mono">12 chars/s</span>
+                            </div>
+                            <input id="typingSpeedRange" type="range" min="3" max="30" step="1" value="12" class="w-full">
+                        </div>
+
+                        <div>
+                            <div class="flex justify-between text-xs mb-1">
+                                <span class="text-slate-400">Font Size</span>
+                                <span id="fontSizeVal" class="text-pink-400 font-mono">54px</span>
+                            </div>
+                            <input id="fontSizeRange" type="range" min="28" max="90" step="2" value="54" class="w-full">
+                        </div>
+                    </div>
+
+                    <!-- Line Spacing & Cursor -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
+                        <div>
+                            <div class="flex justify-between text-xs mb-1">
+                                <span class="text-slate-400">Line Spacing</span>
+                                <span id="lineHeightVal" class="text-pink-400 font-mono">1.4x</span>
+                            </div>
+                            <input id="lineHeightRange" type="range" min="1.0" max="2.0" step="0.05" value="1.4" class="w-full">
+                        </div>
+
+                        <div class="flex items-center justify-between bg-slate-900 px-3 py-2 rounded-xl border border-slate-800">
+                            <span class="text-xs text-slate-300">Retro Pixel Shadow</span>
+                            <input id="pixelTextShadowCheck" type="checkbox" checked class="w-4 h-4 accent-pink-500 rounded cursor-pointer">
+                        </div>
+                    </div>
+
+                    <div class="flex items-center justify-between bg-slate-900 px-3 py-2 rounded-xl border border-slate-800">
+                        <span class="text-xs text-slate-300">Show Blinking Cursor While Typing</span>
+                        <input id="showCursorCheck" type="checkbox" class="w-4 h-4 accent-pink-500 rounded cursor-pointer">
+                    </div>
+                </div>
+
+                <!-- Speech Bubble Styling -->
+                <div class="bg-slate-950/60 border border-slate-800 rounded-2xl p-4 space-y-4">
+                    <h3 class="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                        <i class="ph-bold ph-chat-teardrop text-pink-400"></i>
+                        Speech Bubble Colors & Position
+                    </h3>
+
+                    <div class="grid grid-cols-3 gap-3">
+                        <div class="bg-slate-900 p-2.5 rounded-xl border border-slate-800 flex flex-col items-center gap-1.5">
+                            <span class="text-[11px] text-slate-400">Text Color</span>
+                            <input id="textColorPicker" type="color" value="#F08CAE" class="w-10 h-8 rounded cursor-pointer bg-transparent border-0">
+                        </div>
+                        <div class="bg-slate-900 p-2.5 rounded-xl border border-slate-800 flex flex-col items-center gap-1.5">
+                            <span class="text-[11px] text-slate-400">Border Color</span>
+                            <input id="borderColorPicker" type="color" value="#FF0883" class="w-10 h-8 rounded cursor-pointer bg-transparent border-0">
+                        </div>
+                        <div class="bg-slate-900 p-2.5 rounded-xl border border-slate-800 flex flex-col items-center gap-1.5">
+                            <span class="text-[11px] text-slate-400">Bubble Fill</span>
+                            <input id="bubbleFillPicker" type="color" value="#FFFFFF" class="w-10 h-8 rounded cursor-pointer bg-transparent border-0">
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <div class="flex justify-between text-xs mb-1">
+                                <span class="text-slate-400">Bubble Y Position</span>
+                                <span id="bubbleYVal" class="text-pink-400 font-mono">760px</span>
+                            </div>
+                            <input id="bubbleYRange" type="range" min="350" max="1050" step="10" value="760" class="w-full">
+                        </div>
+
+                        <div>
+                            <div class="flex justify-between text-xs mb-1">
+                                <span class="text-slate-400">Border Thickness</span>
+                                <span id="borderWidthVal" class="text-pink-400 font-mono">24px</span>
+                            </div>
+                            <input id="borderWidthRange" type="range" min="8" max="44" step="2" value="24" class="w-full">
+                        </div>
+                    </div>
+
+                    <div class="flex items-center justify-between bg-slate-900 px-3 py-2 rounded-xl border border-slate-800">
+                        <span class="text-xs text-slate-300">Subtle Bubble Float Sync</span>
+                        <input id="bubbleFloatCheck" type="checkbox" class="w-4 h-4 accent-pink-500 rounded cursor-pointer">
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 2: CHARACTER FLOAT & GROUND SHADOW -->
+            <div id="tab-motion" class="tab-panel hidden space-y-5">
+                <div class="bg-slate-950/60 border border-slate-800 rounded-2xl p-4 space-y-4">
+                    <h3 class="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                        <i class="ph-bold ph-waves"></i>
+                        Smooth Levitation Physics
+                    </h3>
+
+                    <div>
+                        <div class="flex justify-between text-xs mb-1">
+                            <span class="text-slate-400">Floating Height (Amplitude)</span>
+                            <span id="floatAmpVal" class="text-amber-400 font-mono">38px</span>
+                        </div>
+                        <input id="floatAmpRange" type="range" min="0" max="100" step="2" value="38" class="w-full">
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between text-xs mb-1">
+                            <span class="text-slate-400">Floating Speed (Cycles/sec)</span>
+                            <span id="floatSpeedVal" class="text-amber-400 font-mono">0.45 Hz</span>
+                        </div>
+                        <input id="floatSpeedRange" type="range" min="0.1" max="1.5" step="0.05" value="0.45" class="w-full">
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <div class="flex justify-between text-xs mb-1">
+                                <span class="text-slate-400">Character Scale</span>
+                                <span id="charScaleVal" class="text-amber-400 font-mono">100%</span>
+                            </div>
+                            <input id="charScaleRange" type="range" min="60" max="140" step="2" value="100" class="w-full">
+                        </div>
+
+                        <div>
+                            <div class="flex justify-between text-xs mb-1">
+                                <span class="text-slate-400">Character Vertical Pos</span>
+                                <span id="charYVal" class="text-amber-400 font-mono">1440px</span>
+                            </div>
+                            <input id="charYRange" type="range" min="1150" max="1680" step="10" value="1440" class="w-full">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Ground Shadow Controls -->
+                <div class="bg-slate-950/60 border border-slate-800 rounded-2xl p-4 space-y-4">
+                    <h3 class="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                        <i class="ph-bold ph-circle-half-tilt text-amber-400"></i>
+                        Dynamic Ground Shadow
+                    </h3>
+                    <p class="text-xs text-slate-400 leading-relaxed">
+                        The shadow is cast onto the ground path and automatically scales & softens in sync as the character levitates up and down.
+                    </p>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <div class="flex justify-between text-xs mb-1">
+                                <span class="text-slate-400">Shadow Darkness</span>
+                                <span id="shadowAlphaVal" class="text-amber-400 font-mono">22%</span>
+                            </div>
+                            <input id="shadowAlphaRange" type="range" min="0" max="60" step="1" value="22" class="w-full">
+                        </div>
+
+                        <div>
+                            <div class="flex justify-between text-xs mb-1">
+                                <span class="text-slate-400">Shadow Width</span>
+                                <span id="shadowWidthVal" class="text-amber-400 font-mono">290px</span>
+                            </div>
+                            <input id="shadowWidthRange" type="range" min="120" max="450" step="5" value="290" class="w-full">
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between text-xs mb-1">
+                            <span class="text-slate-400">Shadow Ground Y Position</span>
+                            <span id="shadowYVal" class="text-amber-400 font-mono">1715px</span>
+                        </div>
+                        <input id="shadowYRange" type="range" min="1500" max="1860" step="5" value="1715" class="w-full">
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 3: BACKGROUNDS & CHARACTER ASSETS -->
+            <div id="tab-assets" class="tab-panel hidden space-y-5">
+                
+                <!-- Background Switcher -->
+                <div class="bg-slate-950/60 border border-slate-800 rounded-2xl p-4 space-y-4">
+                    <h3 class="text-xs font-bold uppercase tracking-wider text-pink-400 flex items-center gap-1.5">
+                        <i class="ph-bold ph-mountains"></i>
+                        Switch or Upload Background
+                    </h3>
+
+                    <!-- Preset Background Grid -->
+                    <div class="grid grid-cols-2 gap-2.5">
+                        <button data-bg-preset="razcal-default" class="bg-preset-btn ring-2 ring-pink-500 bg-slate-900 hover:bg-slate-800 p-2.5 rounded-xl border border-slate-800 text-left transition flex items-center gap-2.5 cursor-pointer">
+                            <div class="w-8 h-12 rounded-lg bg-gradient-to-b from-sky-200 via-blue-500 to-green-600 shrink-0 border border-white/20"></div>
+                            <div>
+                                <div class="text-xs font-bold text-white">Original Meadow</div>
+                                <div class="text-[10px] text-slate-400">Clouds, Hills & Path</div>
+                            </div>
+                        </button>
+
+                        <button data-bg-preset="sunset-zen" class="bg-preset-btn bg-slate-900 hover:bg-slate-800 p-2.5 rounded-xl border border-slate-800 text-left transition flex items-center gap-2.5 cursor-pointer">
+                            <div class="w-8 h-12 rounded-lg bg-gradient-to-b from-orange-300 via-pink-500 to-emerald-700 shrink-0 border border-white/20"></div>
+                            <div>
+                                <div class="text-xs font-bold text-white">Golden Sunset</div>
+                                <div class="text-[10px] text-slate-400">Warm Skies & Trail</div>
+                            </div>
+                        </button>
+
+                        <button data-bg-preset="cosmic-night" class="bg-preset-btn bg-slate-900 hover:bg-slate-800 p-2.5 rounded-xl border border-slate-800 text-left transition flex items-center gap-2.5 cursor-pointer">
+                            <div class="w-8 h-12 rounded-lg bg-gradient-to-b from-indigo-950 via-purple-900 to-teal-900 shrink-0 border border-white/20"></div>
+                            <div>
+                                <div class="text-xs font-bold text-white">Starlight Dream</div>
+                                <div class="text-[10px] text-slate-400">Night Sky & Moon Path</div>
+                            </div>
+                        </button>
+
+                        <button data-bg-preset="pastel-vapor" class="bg-preset-btn bg-slate-900 hover:bg-slate-800 p-2.5 rounded-xl border border-slate-800 text-left transition flex items-center gap-2.5 cursor-pointer">
+                            <div class="w-8 h-12 rounded-lg bg-gradient-to-b from-pink-200 via-purple-300 to-teal-400 shrink-0 border border-white/20"></div>
+                            <div>
+                                <div class="text-xs font-bold text-white">Pastel Nirvana</div>
+                                <div class="text-[10px] text-slate-400">Candy Clouds & Hills</div>
+                            </div>
+                        </button>
+                    </div>
+
+                    <div class="flex items-center justify-between bg-slate-900 px-3 py-2 rounded-xl border border-slate-800">
+                        <span class="text-xs text-slate-300">Animate Drifting Sky Clouds (Built-in Scenes)</span>
+                        <input id="animateCloudsCheck" type="checkbox" checked class="w-4 h-4 accent-pink-500 rounded cursor-pointer">
+                    </div>
+
+                    <!-- Upload Custom Background File -->
+                    <div class="pt-2 border-t border-slate-800/80 space-y-3">
+                        <label class="block text-xs font-semibold text-slate-300">Upload Your Own Background Image</label>
+                        <label class="flex items-center justify-center gap-2 w-full py-3 px-4 rounded-xl border-2 border-dashed border-slate-700 hover:border-pink-500 bg-slate-900/60 hover:bg-slate-900 text-xs font-semibold text-slate-200 cursor-pointer transition">
+                            <i class="ph-bold ph-upload-simple text-pink-400 text-base"></i>
+                            <span>Choose Background Image (PNG / JPG / WEBP)</span>
+                            <input id="bgFileUpload" type="file" accept="image/*" class="hidden">
+                        </label>
+
+                        <!-- Custom Background URL -->
+                        <div class="space-y-1.5">
+                            <label class="block text-[11px] text-slate-400">Or Load Background from Image URL:</label>
+                            <div class="flex gap-2">
+                                <input id="bgUrlInput" type="text" value="https://razcal.life/wp-content/uploads/background-option-scaled.png" class="flex-1 rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-slate-200 focus:border-pink-500 outline-none">
+                                <button id="loadBgUrlBtn" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-white shrink-0 cursor-pointer transition">Load URL</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Character Image Settings -->
+                <div class="bg-slate-950/60 border border-slate-800 rounded-2xl p-4 space-y-4">
+                    <h3 class="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                        <i class="ph-bold ph-smiley"></i>
+                        Character Sprite Options
+                    </h3>
+
+                    <label class="flex items-center justify-center gap-2 w-full py-2.5 px-4 rounded-xl border-2 border-dashed border-slate-700 hover:border-amber-400 bg-slate-900/60 hover:bg-slate-900 text-xs font-semibold text-slate-200 cursor-pointer transition">
+                        <i class="ph-bold ph-upload-simple text-amber-400 text-base"></i>
+                        <span>Upload Custom Character PNG (Transparent)</span>
+                        <input id="charFileUpload" type="file" accept="image/*" class="hidden">
+                    </label>
+
+                    <div class="space-y-1.5">
+                        <label class="block text-[11px] text-slate-400">Character Image URL:</label>
+                        <div class="flex gap-2">
+                            <input id="charUrlInput" type="text" value="https://razcal.life/wp-content/uploads/bb-meditate.png" class="flex-1 rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-slate-200 focus:border-amber-400 outline-none">
+                            <button id="loadCharUrlBtn" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-white shrink-0 cursor-pointer transition">Load URL</button>
+                        </div>
+                    </div>
+
+                    <button id="useVectorCharBtn" class="w-full py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 font-medium transition cursor-pointer">
+                        Reset to Built-In High-Res Meditating BB Character
+                    </button>
+                </div>
+            </div>
+
+            <!-- Save App Locally Card -->
+            <div class="bg-gradient-to-br from-slate-950 to-slate-900 border border-slate-800 rounded-2xl p-4 space-y-2.5">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-bold text-white flex items-center gap-1.5">
+                        <i class="ph-fill ph-floppy-disk text-emerald-400 text-base"></i>
+                        Run Locally Anytime
+                    </span>
+                    <button id="downloadAppHtmlBtn" class="px-3 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 text-xs font-semibold transition cursor-pointer flex items-center gap-1.5">
+                        <i class="ph-bold ph-download-simple"></i>
+                        <span>Download App (.html)</span>
+                    </button>
+                </div>
+                <p class="text-[11px] text-slate-400 leading-relaxed">
+                    Download this standalone HTML file to your computer and double-click it anytime to create & export social videos offline.
+                </p>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toastNotification" class="fixed bottom-5 right-5 z-50 hidden max-w-sm bg-slate-900 border border-slate-700 text-white px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-3">
+        <i id="toastIcon" class="ph-fill ph-check-circle text-emerald-400 text-xl shrink-0"></i>
+        <div class="text-xs leading-snug" id="toastMessage">Video exported!</div>
+    </div>
+
+    <script>
+        /********************************************************************
+         * RAZCAL SOCIAL MEDIA ANIMATION STUDIO (1080x1920 9:16)
+         * Everything renders to #stageCanvas so preview == exported MP4 video
+         ********************************************************************/
+        const canvas = document.getElementById('stageCanvas');
+        const ctx = canvas.getContext('2d');
+        const W = 1080;
+        const H = 1920;
+
+        // Application State
+        const state = {
+            // Text & Typewriter
+            text: "YOU ARE WHO\nYOU DREAM OF",
+            fontFamily: "'Silkscreen', monospace",
+            fontSize: 54,
+            lineHeight: 1.4,
+            typingSpeed: 12, // characters per second
+            typingLoopMode: 'hold', // 'hold', 'loop', 'instant'
+            showCursor: false,
+            pixelTextShadow: true,
+            textColor: '#F08CAE',
+
+            // Speech Bubble
+            borderColor: '#FF0883',
+            bubbleFill: '#FFFFFF',
+            bubbleY: 760,
+            borderWidth: 24,
+            bubbleFloatSync: false,
+
+            // Character Floating & Position
+            floatAmp: 38,
+            floatSpeed: 0.45, // Hz
+            charScale: 1.0,
+            charY: 1440,
+
+            // Ground Shadow
+            shadowAlpha: 0.22,
+            shadowWidth: 290,
+            shadowY: 1715,
+
+            // Assets & Background
+            bgPreset: 'razcal-default', // 'razcal-default', 'sunset-zen', 'cosmic-night', 'pastel-vapor', 'custom-image'
+            animateClouds: true,
+            bgImage: null,
+            bgImageCorsSafe: true,
+            charImage: null,
+            charImageCorsSafe: true,
+            useVectorChar: false,
+
+            // Animation Timing
+            isPaused: false,
+            startTime: performance.now(),
+            typingElapsed: 0,
+            lastFrameTime: performance.now(),
+            isRecording: false
+        };
+
+        // Toast Helper
+        let toastTimeout = null;
+        function showToast(msg, type = 'success') {
+            const toast = document.getElementById('toastNotification');
+            const icon = document.getElementById('toastIcon');
+            const text = document.getElementById('toastMessage');
+            text.textContent = msg;
+            if (type === 'success') {
+                icon.className = 'ph-fill ph-check-circle text-emerald-400 text-xl shrink-0';
+            } else if (type === 'info') {
+                icon.className = 'ph-fill ph-info text-sky-400 text-xl shrink-0';
+            } else {
+                icon.className = 'ph-fill ph-warning-circle text-amber-400 text-xl shrink-0';
+            }
+            toast.classList.remove('hidden');
+            clearTimeout(toastTimeout);
+            toastTimeout = setTimeout(() => toast.classList.add('hidden'), 4500);
+        }
+
+        function updateStatusBadge(text, color = 'emerald') {
+            const dot = document.getElementById('statusDot');
+            const label = document.getElementById('statusText');
+            label.textContent = text;
+            dot.className = `w-2 h-2 rounded-full bg-${color}-400 animate-pulse`;
+        }
+
+        /********************************************************************
+         * SMART IMAGE LOADING WITH CORS DETECTION & VECTOR FALLBACKS
+         * External URLs without CORS headers taint HTML5 canvases and break
+         * video export. We test CORS first and seamlessly use our exact
+         * high-res procedural replica if a remote server blocks CORS.
+         ********************************************************************/
+        function loadExternalImage(url, onSuccess, onCorsFallback) {
+            // Try loading with crossOrigin = "anonymous" so canvas stays exportable
+            const imgCors = new Image();
+            imgCors.crossOrigin = "anonymous";
+
+            imgCors.onload = () => {
+                // Verify we can read pixels without SecurityError
+                try {
+                    const testCanvas = document.createElement('canvas');
+                    testCanvas.width = 2;
+                    testCanvas.height = 2;
+                    const tCtx = testCanvas.getContext('2d');
+                    tCtx.drawImage(imgCors, 0, 0, 2, 2);
+                    tCtx.getImageData(0, 0, 1, 1);
+                    onSuccess(imgCors, true);
+                } catch (err) {
+                    onCorsFallback();
+                }
+            };
+
+            imgCors.onerror = () => {
+                onCorsFallback();
+            };
+
+            // Add cache-buster for clean CORS handshake
+            imgCors.src = url;
+        }
+
+        function initDefaultAssets() {
+            const defaultBgUrl = document.getElementById('bgUrlInput').value.trim();
+            const defaultCharUrl = document.getElementById('charUrlInput').value.trim();
+
+            // Attempt loading default background URL with CORS check
+            loadExternalImage(
+                defaultBgUrl,
+                (img) => {
+                    state.bgImage = img;
+                    state.bgPreset = 'custom-image';
+                    updateStatusBadge('Original Assets Loaded (Export Ready)');
+                },
+                () => {
+                    // Fallback to exact vector match of the reference background
+                    state.bgImage = null;
+                    state.bgPreset = 'razcal-default';
+                }
+            );
+
+            // Attempt loading default character URL with CORS check
+            loadExternalImage(
+                defaultCharUrl,
+                (img) => {
+                    state.charImage = img;
+                    state.useVectorChar = false;
+                },
+                () => {
+                    state.charImage = null;
+                    state.useVectorChar = true;
+                }
+            );
+        }
+
+        /********************************************************************
+         * PROCEDURAL VECTOR BACKGROUND (Matches Reference Image 1:1)
+         ********************************************************************/
+        const PALETTES = {
+            'razcal-default': {
+                sky: '#BCE0FD',
+                cloud: '#DDE9F8',
+                hillBack: '#3988FC',
+                hillFront: '#539BFF',
+                grass: '#32A846',
+                path: '#CDB89E'
+            },
+            'sunset-zen': {
+                sky: '#FDE68A',
+                cloud: '#FEF3C7',
+                hillBack: '#EC4899',
+                hillFront: '#F472B6',
+                grass: '#15803D',
+                path: '#E7CBA9'
+            },
+            'cosmic-night': {
+                sky: '#0F172A',
+                cloud: '#1E293B',
+                hillBack: '#312E81',
+                hillFront: '#4338CA',
+                grass: '#065F46',
+                path: '#94A3B8'
+            },
+            'pastel-vapor': {
+                sky: '#FBCFE8',
+                cloud: '#FDF2F8',
+                hillBack: '#A855F7',
+                hillFront: '#C084FC',
+                grass: '#2DD4BF',
+                path: '#FDE68A'
+            }
+        };
+
+        function drawCloudCluster(ctx, x, y, scale, color) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.scale(scale, scale);
+            ctx.fillStyle = color;
+
+            ctx.beginPath();
+            ctx.arc(0, 0, 85, 0, Math.PI * 2);
+            ctx.arc(95, -18, 105, 0, Math.PI * 2);
+            ctx.arc(200, 12, 78, 0, Math.PI * 2);
+            ctx.arc(70, 42, 85, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+
+        function drawBackground(ctx, timeSec) {
+            if (state.bgPreset === 'custom-image' && state.bgImage) {
+                // Draw uploaded or URL background covering 1080x1920 (object-fit: cover)
+                const img = state.bgImage;
+                const imgRatio = img.width / img.height;
+                const canvasRatio = W / H;
+                let drawW = W, drawH = H, offsetX = 0, offsetY = 0;
+
+                if (imgRatio > canvasRatio) {
+                    drawW = H * imgRatio;
+                    offsetX = (W - drawW) / 2;
+                } else {
+                    drawH = W / imgRatio;
+                    offsetY = (H - drawH) / 2;
+                }
+                ctx.drawImage(img, offsetX, offsetY, drawW, drawH);
+                return;
+            }
+
+            const pal = PALETTES[state.bgPreset] || PALETTES['razcal-default'];
+
+            // 1. Sky
+            ctx.fillStyle = pal.sky;
+            ctx.fillRect(0, 0, W, H);
+
+            // Optional stars for Cosmic Night preset
+            if (state.bgPreset === 'cosmic-night') {
+                ctx.fillStyle = '#FFFFFF';
+                for (let i = 0; i < 45; i++) {
+                    const sx = (i * 239) % W;
+                    const sy = (i * 113) % 750;
+                    const sr = (i % 3) + 1.5;
+                    ctx.globalAlpha = 0.4 + 0.5 * Math.sin(timeSec * 2 + i);
+                    ctx.beginPath();
+                    ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                ctx.globalAlpha = 1;
+            }
+
+            // 2. Soft Clouds (matching reference positions + optional gentle drift)
+            const drift = state.animateClouds ? (timeSec * 18) : 0;
+            const wrapX = (baseX) => ((baseX + drift + 350) % (W + 700)) - 350;
+
+            // Top-left large cloud
+            drawCloudCluster(ctx, wrapX(35), 215, 1.25, pal.cloud);
+            // Mid-left small oval cloud
+            ctx.fillStyle = pal.cloud;
+            ctx.beginPath();
+            ctx.ellipse(wrapX(45), 485, 76, 56, 0, 0, Math.PI * 2);
+            ctx.fill();
+            // Center cloud cluster
+            drawCloudCluster(ctx, wrapX(455), 295, 0.78, pal.cloud);
+            // Top-right cloud cluster
+            drawCloudCluster(ctx, wrapX(815), 115, 1.35, pal.cloud);
+            // Mid-right large cloud cluster
+            drawCloudCluster(ctx, wrapX(860), 475, 1.22, pal.cloud);
+
+            // 3. Blue Hills (matching layered arches in reference image)
+            // Back right darker blue hill
+            ctx.fillStyle = pal.hillBack;
+            ctx.beginPath();
+            ctx.moveTo(390, 1250);
+            ctx.bezierCurveTo(370, 690, 850, 610, 1140, 770);
+            ctx.lineTo(1140, 1300);
+            ctx.closePath();
+            ctx.fill();
+
+            // Front left lighter blue hill
+            ctx.fillStyle = pal.hillFront;
+            ctx.beginPath();
+            ctx.moveTo(-60, 775);
+            ctx.bezierCurveTo(180, 710, 465, 815, 515, 1245);
+            ctx.lineTo(-60, 1245);
+            ctx.closePath();
+            ctx.fill();
+
+            // Front right lighter blue hill
+            ctx.beginPath();
+            ctx.moveTo(585, 1245);
+            ctx.bezierCurveTo(645, 920, 910, 860, 1140, 910);
+            ctx.lineTo(1140, 1245);
+            ctx.closePath();
+            ctx.fill();
+
+            // 4. Green Grass Field
+            ctx.fillStyle = pal.grass;
+            ctx.beginPath();
+            ctx.moveTo(-20, 1225);
+            ctx.quadraticCurveTo(W * 0.5, 1190, W + 20, 1230);
+            ctx.lineTo(W + 20, H + 20);
+            ctx.lineTo(-20, H + 20);
+            ctx.closePath();
+            ctx.fill();
+
+            // 5. Winding Tan Dirt Path (matching S-curve perspective in reference image)
+            ctx.fillStyle = pal.path;
+            ctx.beginPath();
+            ctx.moveTo(450, 1208); // Narrow top start at horizon
+            ctx.bezierCurveTo(185, 1320, 900, 1465, 290, 1625);
+            ctx.bezierCurveTo(-15, 1705, 540, 1810, 0, 1920);
+            ctx.lineTo(1035, 1920);
+            ctx.bezierCurveTo(1110, 1740, 560, 1685, 875, 1565);
+            ctx.bezierCurveTo(1135, 1465, 545, 1310, 755, 1213);
+            ctx.closePath();
+            ctx.fill();
+        }
+
+        /********************************************************************
+         * PROCEDURAL HIGH-RES MEDITATING 6-ARMED YELLOW CHARACTER
+         * faithfully matching https://razcal.life/wp-content/uploads/bb-meditate.png
+         ********************************************************************/
+        function drawMeditatingArm(ctx, shoulderX, shoulderY, elbowX, elbowY, handX, handY, isLeft) {
+            ctx.save();
+            // Black outline stroke + yellow inner stroke for smooth cartoon limbs
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+
+            // Outer black outline
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 74;
+            ctx.beginPath();
+            ctx.moveTo(shoulderX, shoulderY);
+            ctx.quadraticCurveTo(elbowX, elbowY, handX, handY);
+            ctx.stroke();
+
+            // Inner golden yellow fill
+            ctx.strokeStyle = '#FCE029';
+            ctx.lineWidth = 54;
+            ctx.beginPath();
+            ctx.moveTo(shoulderX, shoulderY);
+            ctx.quadraticCurveTo(elbowX, elbowY, handX, handY);
+            ctx.stroke();
+
+            // Hand & Mudra Fingers (OK zen sign)
+            ctx.translate(handX, handY);
+            if (!isLeft) ctx.scale(-1, 1);
+
+            // Little cute fingers fanned out
+            const fingerAngles = [-0.65, -0.25, 0.15];
+            fingerAngles.forEach(ang => {
+                ctx.save();
+                ctx.rotate(ang);
+                ctx.fillStyle = '#FCE029';
+                ctx.strokeStyle = '#000000';
+                ctx.lineWidth = 10;
+                ctx.beginPath();
+                ctx.ellipse(-28, -18, 22, 11, -0.3, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+                ctx.restore();
+            });
+
+            // Palm circle
+            ctx.fillStyle = '#FCE029';
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 10;
+            ctx.beginPath();
+            ctx.arc(0, 0, 30, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+
+            // Mudra pinch circle (thumb + index loop)
+            ctx.beginPath();
+            ctx.arc(6, -12, 11, 0, Math.PI * 2);
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 5;
+            ctx.stroke();
+
+            ctx.restore();
+        }
+
+        function drawFourPointSparkle(ctx, x, y, size) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.fillStyle = '#FFFFFF';
+            ctx.beginPath();
+            ctx.moveTo(0, -size);
+            ctx.quadraticCurveTo(size * 0.18, -size * 0.18, size, 0);
+            ctx.quadraticCurveTo(size * 0.18, size * 0.18, 0, size);
+            ctx.quadraticCurveTo(-size * 0.18, size * 0.18, -size, 0);
+            ctx.quadraticCurveTo(-size * 0.18, -size * 0.18, 0, -size);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+        }
+
+        function drawVectorBBCharacter(ctx, centerX, centerY, scale, timeSec) {
+            ctx.save();
+            ctx.translate(centerX, centerY);
+            ctx.scale(scale, scale);
+
+            const yellow = '#FCE029';
+            const shade = '#E2C313';
+
+            // 1. Six Meditating Arms (3 Left, 3 Right)
+            // Top pair
+            drawMeditatingArm(ctx, -125, -45, -205, -55, -245, -165, true);
+            drawMeditatingArm(ctx, 125, -45, 205, -55, 245, -165, false);
+            // Middle pair
+            drawMeditatingArm(ctx, -135, 35, -225, 65, -295, 20, true);
+            drawMeditatingArm(ctx, 135, 35, 225, 65, 295, 20, false);
+            // Bottom pair
+            drawMeditatingArm(ctx, -130, 105, -195, 115, -225, 165, true);
+            drawMeditatingArm(ctx, 130, 105, 195, 115, 225, 165, false);
+
+            // 2. Main Body & Head Silhouette (with bold cartoon black outline)
+            ctx.fillStyle = yellow;
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 12;
+            ctx.lineJoin = 'round';
+            ctx.lineCap = 'round';
+
+            ctx.beginPath();
+            // Start at top curl tip
+            ctx.moveTo(45, -310);
+            ctx.bezierCurveTo(95, -345, 20, -395, -20, -335);
+            ctx.bezierCurveTo(-35, -310, -55, -285, -90, -270);
+            // Upper head left
+            ctx.bezierCurveTo(-135, -245, -145, -210, -145, -190);
+            // Puffy left cheek
+            ctx.bezierCurveTo(-195, -160, -195, -95, -145, -65);
+            // Left torso
+            ctx.bezierCurveTo(-165, 20, -165, 115, -140, 175);
+            // Left crossed leg knee
+            ctx.bezierCurveTo(-225, 195, -225, 305, -120, 315);
+            // Left foot sole center
+            ctx.bezierCurveTo(-60, 320, -10, 330, 0, 305);
+            // Right foot sole center
+            ctx.bezierCurveTo(10, 330, 60, 320, 120, 315);
+            // Right crossed leg knee
+            ctx.bezierCurveTo(225, 305, 225, 195, 140, 175);
+            // Right torso
+            ctx.bezierCurveTo(165, 115, 165, 20, 145, -65);
+            // Puffy right cheek
+            ctx.bezierCurveTo(195, -95, 195, -160, 145, -190);
+            // Upper head right
+            ctx.bezierCurveTo(145, -210, 135, -245, 90, -270);
+            // Curl inner curve
+            ctx.bezierCurveTo(55, -285, 20, -295, 45, -310);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            // 3. Subtle Belly & Leg Contour Shading Lines
+            ctx.strokeStyle = shade;
+            ctx.lineWidth = 6;
+            // Belly curve
+            ctx.beginPath();
+            ctx.arc(0, 85, 108, 0.22 * Math.PI, 0.78 * Math.PI);
+            ctx.stroke();
+
+            // Crossed Feet Center Details
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 9;
+            ctx.beginPath();
+            ctx.moveTo(0, 225);
+            ctx.lineTo(0, 312);
+            ctx.stroke();
+
+            // Left & right leg inner creases
+            ctx.beginPath();
+            ctx.moveTo(-135, 225);
+            ctx.quadraticCurveTo(-55, 215, -8, 235);
+            ctx.moveTo(135, 225);
+            ctx.quadraticCurveTo(55, 215, 8, 235);
+            ctx.stroke();
+
+            // 4. Serene Meditating Facial Expression
+            // Eyebrows
+            ctx.strokeStyle = '#785C08';
+            ctx.lineWidth = 4.5;
+            ctx.beginPath();
+            ctx.arc(-62, -205, 28, 1.15 * Math.PI, 1.75 * Math.PI);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(62, -205, 28, 1.25 * Math.PI, 1.85 * Math.PI);
+            ctx.stroke();
+
+            // Happy Closed Eyes (arches)
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 7.5;
+            ctx.beginPath();
+            ctx.arc(-55, -162, 26, 1.1 * Math.PI, 1.9 * Math.PI);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(55, -162, 26, 1.1 * Math.PI, 1.9 * Math.PI);
+            ctx.stroke();
+
+            // Cute Rosy Pink Cheeks
+            ctx.fillStyle = '#F783AC';
+            ctx.beginPath();
+            ctx.ellipse(-65, -142, 26, 13, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(65, -142, 26, 13, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Gentle Smile
+            ctx.strokeStyle = '#A37F0B';
+            ctx.lineWidth = 5;
+            ctx.beginPath();
+            ctx.arc(0, -142, 28, 0.2 * Math.PI, 0.8 * Math.PI);
+            ctx.stroke();
+
+            // 5. Cheek Sparkle Clusters (matching reference image)
+            const twinkle = 0.88 + 0.15 * Math.sin(timeSec * 5);
+            // Left cheek sparkles
+            drawFourPointSparkle(ctx, -118, -125, 19 * twinkle);
+            drawFourPointSparkle(ctx, -96, -108, 13 / twinkle);
+            drawFourPointSparkle(ctx, -102, -142, 11 * twinkle);
+            // Right cheek sparkles
+            drawFourPointSparkle(ctx, 112, -125, 19 * twinkle);
+            drawFourPointSparkle(ctx, 132, -138, 13 / twinkle);
+            drawFourPointSparkle(ctx, 118, -104, 12 * twinkle);
+
+            ctx.restore();
+        }
+
+        /********************************************************************
+         * SPEECH BUBBLE + TYPEWRITER RENDERER
+         ********************************************************************/
+        function drawSpeechBubble(ctx, centerX, centerY, width, height, radius, floatOffset) {
+            const x = centerX - width / 2;
+            const y = centerY - height / 2 + (state.bubbleFloatSync ? floatOffset * 0.35 : 0);
+
+            // Tail coordinates at bottom-left pointing down toward character
+            const tailStartLeft = x + width * 0.20;
+            const tailTipX = x + width * 0.31;
+            const tailTipY = y + height + 72;
+            const tailEndRight = x + width * 0.35;
+
+            ctx.save();
+            ctx.fillStyle = state.bubbleFill;
+            ctx.strokeStyle = state.borderColor;
+            ctx.lineWidth = state.borderWidth;
+            ctx.lineJoin = 'round';
+            ctx.lineCap = 'round';
+
+            ctx.beginPath();
+            // Top edge
+            ctx.moveTo(x + radius, y);
+            ctx.lineTo(x + width - radius, y);
+            ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+            // Right edge
+            ctx.lineTo(x + width, y + height - radius);
+            ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+            // Bottom edge right of tail
+            ctx.lineTo(tailEndRight, y + height);
+            // Speech pointer tail pointing down-right then back up
+            ctx.lineTo(tailTipX + 12, tailTipY - 10);
+            ctx.quadraticCurveTo(tailTipX, tailTipY + 8, tailTipX - 18, tailTipY - 6);
+            ctx.lineTo(tailStartLeft, y + height);
+            // Bottom edge left of tail
+            ctx.lineTo(x + radius, y + height);
+            ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+            // Left edge
+            ctx.lineTo(x, y + radius);
+            ctx.quadraticCurveTo(x, y, x + radius, y);
+            ctx.closePath();
+
+            // Fill first, then thick outer border
+            ctx.fill();
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        function drawTypewriterText(ctx, centerX, centerY, floatOffset, timeSec) {
+            const fullText = state.text || "";
+            const totalChars = fullText.length;
+
+            // Compute how many characters should be visible right now
+            let visibleChars = totalChars;
+            const typingDuration = totalChars / Math.max(1, state.typingSpeed);
+
+            if (state.typingLoopMode === 'instant') {
+                visibleChars = totalChars;
+            } else if (state.typingLoopMode === 'hold') {
+                visibleChars = Math.min(totalChars, Math.floor(state.typingElapsed * state.typingSpeed));
+            } else if (state.typingLoopMode === 'loop') {
+                const holdPause = 2.0; // pause 2 seconds after finishing before re-typing
+                const cycleTime = typingDuration + holdPause;
+                const tInCycle = state.typingElapsed % cycleTime;
+                visibleChars = Math.min(totalChars, Math.floor(tInCycle * state.typingSpeed));
+            }
+
+            const currentSubstring = fullText.slice(0, visibleChars);
+            const allLines = fullText.split('\n');
+            const visibleLines = currentSubstring.split('\n');
+
+            ctx.save();
+            ctx.font = `700 ${state.fontSize}px ${state.fontFamily}`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            const lineSpacingPx = state.fontSize * state.lineHeight;
+            const totalBlockHeight = (allLines.length - 1) * lineSpacingPx;
+            const baseY = centerY - totalBlockHeight / 2 + (state.bubbleFloatSync ? floatOffset * 0.35 : 0);
+
+            visibleLines.forEach((lineText, idx) => {
+                const lineY = baseY + idx * lineSpacingPx;
+                let displayStr = lineText;
+
+                // Optional blinking cursor on the active typing line
+                const isLastVisibleLine = (idx === visibleLines.length - 1);
+                const isStillTyping = (visibleChars < totalChars);
+                if (state.showCursor && isLastVisibleLine && (isStillTyping || Math.floor(timeSec * 2.5) % 2 === 0)) {
+                    displayStr += '_';
+                }
+
+                // Optional subtle pixel shadow (matches 3D arcade text look in reference image)
+                if (state.pixelTextShadow) {
+                    ctx.fillStyle = 'rgba(240, 140, 174, 0.32)';
+                    ctx.fillText(displayStr, centerX + 4, lineY + 4);
+                }
+
+                ctx.fillStyle = state.textColor;
+                ctx.fillText(displayStr, centerX, lineY);
+            });
+
+            ctx.restore();
+        }
+
+        /********************************************************************
+         * MASTER RENDER FRAME (Runs at 60 FPS for preview & recording)
+         ********************************************************************/
+        function renderScene(timestamp) {
+            const dt = (timestamp - state.lastFrameTime) / 1000;
+            state.lastFrameTime = timestamp;
+
+            if (!state.isPaused) {
+                state.typingElapsed += Math.max(0, Math.min(dt, 0.1));
+            }
+
+            const elapsedSec = state.typingElapsed;
+
+            // Clear 1080x1920 stage
+            ctx.clearRect(0, 0, W, H);
+
+            // 1. Draw Background (Image or Procedural Meadow)
+            drawBackground(ctx, elapsedSec);
+
+            // 2. Calculate Smooth Floating Offset (Sine wave)
+            // wave ranges from -1 (highest in air) to +1 (closest to ground)
+            const wave = Math.sin(elapsedSec * state.floatSpeed * Math.PI * 2);
+            const floatOffsetY = wave * state.floatAmp;
+
+            // 3. Draw Cast Ground Shadow Beneath Character
+            // As character floats UP (wave < 0), shadow shrinks slightly and becomes lighter.
+            // As character floats DOWN (wave > 0), shadow expands slightly and darkens.
+            const shadowScaleFactor = 1 + (wave * 0.12) * (state.floatAmp / 40);
+            const dynamicShadowRx = state.shadowWidth * Math.max(0.65, shadowScaleFactor) * state.charScale;
+            const dynamicShadowRy = dynamicShadowRx * 0.25;
+            const dynamicShadowAlpha = Math.max(0, Math.min(0.85, state.shadowAlpha * (1 + wave * 0.22)));
+
+            ctx.save();
+            ctx.fillStyle = `rgba(0, 0, 0, ${dynamicShadowAlpha.toFixed(3)})`;
+            ctx.beginPath();
+            ctx.ellipse(W / 2 + 12, state.shadowY, dynamicShadowRx, dynamicShadowRy, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+
+            // 4. Draw Speech Bubble
+            const bubbleW = 575;
+            const bubbleH = 385;
+            const bubbleRadius = 115;
+            drawSpeechBubble(ctx, W / 2, state.bubbleY, bubbleW, bubbleH, bubbleRadius, floatOffsetY);
+
+            // 5. Draw Typewriter Text Inside Bubble
+            drawTypewriterText(ctx, W / 2, state.bubbleY, floatOffsetY, elapsedSec);
+
+            // 6. Draw Floating Character
+            const charCenterX = W / 2;
+            const charCenterY = state.charY + floatOffsetY;
+
+            if (!state.useVectorChar && state.charImage) {
+                const img = state.charImage;
+                const targetW = 680 * state.charScale;
+                const targetH = (img.height / img.width) * targetW;
+                ctx.drawImage(
+                    img,
+                    charCenterX - targetW / 2,
+                    charCenterY - targetH / 2,
+                    targetW,
+                    targetH
+                );
+            } else {
+                drawVectorBBCharacter(ctx, charCenterX, charCenterY, state.charScale, elapsedSec);
+            }
+
+            requestAnimationFrame(renderScene);
+        }
+
+        /********************************************************************
+         * MP4 VIDEO RECORDING ENGINE
+         * Strategy 1: WebCodecs VideoEncoder + mp4-muxer (Guaranteed native .mp4)
+         * Strategy 2: MediaRecorder with video/mp4 or fallback MIME
+         ********************************************************************/
+        async function recordAndExportMP4() {
+            if (state.isRecording) return;
+            state.isRecording = true;
+
+            const durationSec = parseInt(document.getElementById('durationSelect').value, 10) || 6;
+            const fps = 60;
+            const totalFrames = durationSec * fps;
+
+            const overlay = document.getElementById('recordingOverlay');
+            const progressBar = document.getElementById('recordingProgressBar');
+            const timeLabel = document.getElementById('recordingTimeLabel');
+            const stateLabel = document.getElementById('recordingStateLabel');
+            const exportBtn = document.getElementById('exportVideoBtn');
+
+            overlay.classList.remove('hidden');
+            exportBtn.disabled = true;
+            exportBtn.classList.add('opacity-50', 'pointer-events-none');
+
+            // Reset typewriter to start cleanly from frame 0
+            state.isPaused = false;
+            state.typingElapsed = 0;
+
+            try {
+                // Check if WebCodecs + Mp4Muxer is supported for ultra-crisp H.264 MP4 output
+                const canUseWebCodecs = ('VideoEncoder' in window) && typeof Mp4Muxer !== 'undefined';
+
+                if (canUseWebCodecs) {
+                    stateLabel.textContent = 'Rendering 1080p60 MP4...';
+                    await recordWithWebCodecsMp4(durationSec, fps, totalFrames, (pct) => {
+                        progressBar.style.width = `${pct}%`;
+                        timeLabel.textContent = `${pct}%`;
+                    });
+                } else {
+                    stateLabel.textContent = 'Recording Live Video...';
+                    await recordWithMediaRecorder(durationSec, (pct) => {
+                        progressBar.style.width = `${pct}%`;
+                        timeLabel.textContent = `${pct}%`;
+                    });
+                }
+
+                showToast('MP4 Video saved to your downloads!', 'success');
+            } catch (err) {
+                console.error('Primary video export failed, trying fallback:', err);
+                try {
+                    await recordWithMediaRecorder(durationSec, (pct) => {
+                        progressBar.style.width = `${pct}%`;
+                        timeLabel.textContent = `${pct}%`;
+                    });
+                    showToast('Video saved to your downloads!', 'success');
+                } catch (fallbackErr) {
+                    console.error('Fallback recording error:', fallbackErr);
+                    showToast('Export blocked by browser security. Try uploading a local image.', 'warn');
+                }
+            } finally {
+                state.isRecording = false;
+                overlay.classList.add('hidden');
+                progressBar.style.width = '0%';
+                exportBtn.disabled = false;
+                exportBtn.classList.remove('opacity-50', 'pointer-events-none');
+            }
+        }
+
+        // High-speed deterministic frame-by-frame MP4 encoder using WebCodecs + mp4-muxer
+        async function recordWithWebCodecsMp4(durationSec, fps, totalFrames, onProgress) {
+            const muxer = new Mp4Muxer.Muxer({
+                target: new Mp4Muxer.ArrayBufferTarget(),
+                video: {
+                    codec: 'avc',
+                    width: W,
+                    height: H
+                },
+                fastStart: 'in-memory'
+            });
+
+            const videoEncoder = new VideoEncoder({
+                output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+                error: (e) => console.error('VideoEncoder error:', e)
+            });
+
+            // High Profile H.264 for 1080x1920 @ 60fps
+            videoEncoder.configure({
+                codec: 'avc1.64002a',
+                width: W,
+                height: H,
+                bitrate: 8_000_000,
+                framerate: fps
+            });
+
+            // Pause live rAF clock advancing so we step deterministically
+            state.isPaused = true;
+
+            for (let frameIdx = 0; frameIdx < totalFrames; frameIdx++) {
+                const currentTimeSec = frameIdx / fps;
+                state.typingElapsed = currentTimeSec;
+
+                // Force immediate synchronous draw of current timestamp
+                drawDeterministicFrame(currentTimeSec);
+
+                const videoFrame = new VideoFrame(canvas, {
+                    timestamp: Math.round(currentTimeSec * 1_000_000),
+                    duration: Math.round((1 / fps) * 1_000_000)
+                });
+
+                videoEncoder.encode(videoFrame, { keyFrame: frameIdx % 60 === 0 });
+                videoFrame.close();
+
+                if (frameIdx % 4 === 0 || frameIdx === totalFrames - 1) {
+                    const pct = Math.round(((frameIdx + 1) / totalFrames) * 100);
+                    onProgress(pct);
+                    // Yield briefly so UI progress bar stays responsive
+                    await new Promise(r => setTimeout(r, 0));
+                }
+            }
+
+            await videoEncoder.flush();
+            muxer.finalize();
+
+            const { buffer } = muxer.target;
+            const blob = new Blob([buffer], { type: 'video/mp4' });
+            triggerDownload(blob, `razcal-animation-${Date.now()}.mp4`);
+
+            state.isPaused = false;
+            state.lastFrameTime = performance.now();
+        }
+
+        function drawDeterministicFrame(elapsedSec) {
+            ctx.clearRect(0, 0, W, H);
+            drawBackground(ctx, elapsedSec);
+
+            const wave = Math.sin(elapsedSec * state.floatSpeed * Math.PI * 2);
+            const floatOffsetY = wave * state.floatAmp;
+
+            const shadowScaleFactor = 1 + (wave * 0.12) * (state.floatAmp / 40);
+            const dynamicShadowRx = state.shadowWidth * Math.max(0.65, shadowScaleFactor) * state.charScale;
+            const dynamicShadowRy = dynamicShadowRx * 0.25;
+            const dynamicShadowAlpha = Math.max(0, Math.min(0.85, state.shadowAlpha * (1 + wave * 0.22)));
+
+            ctx.save();
+            ctx.fillStyle = `rgba(0, 0, 0, ${dynamicShadowAlpha.toFixed(3)})`;
+            ctx.beginPath();
+            ctx.ellipse(W / 2 + 12, state.shadowY, dynamicShadowRx, dynamicShadowRy, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+
+            drawSpeechBubble(ctx, W / 2, state.bubbleY, 575, 385, 115, floatOffsetY);
+            drawTypewriterText(ctx, W / 2, state.bubbleY, floatOffsetY, elapsedSec);
+
+            const charCenterX = W / 2;
+            const charCenterY = state.charY + floatOffsetY;
+            if (!state.useVectorChar && state.charImage) {
+                const img = state.charImage;
+                const targetW = 680 * state.charScale;
+                const targetH = (img.height / img.width) * targetW;
+                ctx.drawImage(img, charCenterX - targetW / 2, charCenterY - targetH / 2, targetW, targetH);
+            } else {
+                drawVectorBBCharacter(ctx, charCenterX, charCenterY, state.charScale, elapsedSec);
+            }
+        }
+
+        // Fallback MediaRecorder stream capture
+        function recordWithMediaRecorder(durationSec, onProgress) {
+            return new Promise((resolve, reject) => {
+                state.isPaused = false;
+                state.typingElapsed = 0;
+
+                const stream = canvas.captureStream(60);
+                const mimeCandidates = [
+                    'video/mp4;codecs=avc1.42E01E',
+                    'video/mp4;codecs=avc1',
+                    'video/mp4',
+                    'video/webm;codecs=h264',
+                    'video/webm;codecs=vp9',
+                    'video/webm'
+                ];
+
+                let selectedMime = '';
+                for (const mime of mimeCandidates) {
+                    if (MediaRecorder.isTypeSupported(mime)) {
+                        selectedMime = mime;
+                        break;
+                    }
+                }
+
+                const recorder = new MediaRecorder(stream, selectedMime ? {
+                    mimeType: selectedMime,
+                    videoBitsPerSecond: 8_000_000
+                } : undefined);
+
+                const chunks = [];
+                recorder.ondataavailable = (e) => {
+                    if (e.data && e.data.size > 0) chunks.push(e.data);
+                };
+
+                recorder.onerror = (e) => reject(e);
+
+                recorder.onstop = () => {
+                    const blob = new Blob(chunks, { type: selectedMime || 'video/mp4' });
+                    triggerDownload(blob, `razcal-animation-${Date.now()}.mp4`);
+                    resolve();
+                };
+
+                recorder.start(100);
+
+                const startRec = performance.now();
+                const totalMs = durationSec * 1000;
+
+                const timer = setInterval(() => {
+                    const elapsed = performance.now() - startRec;
+                    const pct = Math.min(100, Math.round((elapsed / totalMs) * 100));
+                    onProgress(pct);
+                    if (elapsed >= totalMs) {
+                        clearInterval(timer);
+                        if (recorder.state === 'recording') recorder.stop();
+                    }
+                }, 80);
+            });
+        }
+
+        function triggerDownload(blob, filename) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 10000);
+        }
+
+        /********************************************************************
+         * UI EVENT BINDINGS
+         ********************************************************************/
+        // Tab Switching
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const target = btn.getAttribute('data-tab');
+                document.querySelectorAll('.tab-btn').forEach(b => {
+                    b.classList.remove('bg-pink-600', 'text-white', 'shadow');
+                    b.classList.add('text-slate-400');
+                });
+                btn.classList.add('bg-pink-600', 'text-white', 'shadow');
+                btn.classList.remove('text-slate-400');
+
+                document.querySelectorAll('.tab-panel').forEach(panel => {
+                    panel.classList.add('hidden');
+                });
+                document.getElementById(target).classList.remove('hidden');
+            });
+        });
+
+        // Text & Presets
+        const messageInput = document.getElementById('messageInput');
+        messageInput.addEventListener('input', (e) => {
+            state.text = e.target.value;
+            state.typingElapsed = 0; // restart typing preview when typing new text
+        });
+
+        document.querySelectorAll('.preset-phrase').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const phrase = btn.getAttribute('data-text');
+                messageInput.value = phrase;
+                state.text = phrase;
+                state.typingElapsed = 0;
+            });
+        });
+
+        // Font & Typewriter Controls
+        document.getElementById('fontFamilySelect').addEventListener('change', (e) => {
+            state.fontFamily = e.target.value;
+        });
+
+        document.getElementById('typingLoopMode').addEventListener('change', (e) => {
+            state.typingLoopMode = e.target.value;
+            state.typingElapsed = 0;
+        });
+
+        document.getElementById('typingSpeedRange').addEventListener('input', (e) => {
+            state.typingSpeed = parseFloat(e.target.value);
+            document.getElementById('typingSpeedVal').textContent = `${state.typingSpeed} chars/s`;
+            state.typingElapsed = 0;
+        });
+
+        document.getElementById('fontSizeRange').addEventListener('input', (e) => {
+            state.fontSize = parseInt(e.target.value, 10);
+            document.getElementById('fontSizeVal').textContent = `${state.fontSize}px`;
+        });
+
+        document.getElementById('lineHeightRange').addEventListener('input', (e) => {
+            state.lineHeight = parseFloat(e.target.value);
+            document.getElementById('lineHeightVal').textContent = `${state.lineHeight.toFixed(2)}x`;
+        });
+
+        document.getElementById('pixelTextShadowCheck').addEventListener('change', (e) => {
+            state.pixelTextShadow = e.target.checked;
+        });
+
+        document.getElementById('showCursorCheck').addEventListener('change', (e) => {
+            state.showCursor = e.target.checked;
+        });
+
+        // Bubble Colors & Layout
+        document.getElementById('textColorPicker').addEventListener('input', (e) => {
+            state.textColor = e.target.value;
+        });
+        document.getElementById('borderColorPicker').addEventListener('input', (e) => {
+            state.borderColor = e.target.value;
+        });
+        document.getElementById('bubbleFillPicker').addEventListener('input', (e) => {
+            state.bubbleFill = e.target.value;
+        });
+        document.getElementById('bubbleYRange').addEventListener('input', (e) => {
+            state.bubbleY = parseInt(e.target.value, 10);
+            document.getElementById('bubbleYVal').textContent = `${state.bubbleY}px`;
+        });
+        document.getElementById('borderWidthRange').addEventListener('input', (e) => {
+            state.borderWidth = parseInt(e.target.value, 10);
+            document.getElementById('borderWidthVal').textContent = `${state.borderWidth}px`;
+        });
+        document.getElementById('bubbleFloatCheck').addEventListener('change', (e) => {
+            state.bubbleFloatSync = e.target.checked;
+        });
+
+        // Character Float & Ground Shadow Controls
+        document.getElementById('floatAmpRange').addEventListener('input', (e) => {
+            state.floatAmp = parseInt(e.target.value, 10);
+            document.getElementById('floatAmpVal').textContent = `${state.floatAmp}px`;
+        });
+        document.getElementById('floatSpeedRange').addEventListener('input', (e) => {
+            state.floatSpeed = parseFloat(e.target.value);
+            document.getElementById('floatSpeedVal').textContent = `${state.floatSpeed} Hz`;
+        });
+        document.getElementById('charScaleRange').addEventListener('input', (e) => {
+            const pct = parseInt(e.target.value, 10);
+            state.charScale = pct / 100;
+            document.getElementById('charScaleVal').textContent = `${pct}%`;
+        });
+        document.getElementById('charYRange').addEventListener('input', (e) => {
+            state.charY = parseInt(e.target.value, 10);
+            document.getElementById('charYVal').textContent = `${state.charY}px`;
+        });
+
+        document.getElementById('shadowAlphaRange').addEventListener('input', (e) => {
+            const pct = parseInt(e.target.value, 10);
+            state.shadowAlpha = pct / 100;
+            document.getElementById('shadowAlphaVal').textContent = `${pct}%`;
+        });
+        document.getElementById('shadowWidthRange').addEventListener('input', (e) => {
+            state.shadowWidth = parseInt(e.target.value, 10);
+            document.getElementById('shadowWidthVal').textContent = `${state.shadowWidth}px`;
+        });
+        document.getElementById('shadowYRange').addEventListener('input', (e) => {
+            state.shadowY = parseInt(e.target.value, 10);
+            document.getElementById('shadowYVal').textContent = `${state.shadowY}px`;
+        });
+
+        // Background Preset Buttons
+        document.querySelectorAll('.bg-preset-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.bg-preset-btn').forEach(b => b.classList.remove('ring-2', 'ring-pink-500'));
+                btn.classList.add('ring-2', 'ring-pink-500');
+                state.bgPreset = btn.getAttribute('data-bg-preset');
+                showToast(`Switched background to ${btn.querySelector('.text-white').textContent}`, 'info');
+            });
+        });
+
+        document.getElementById('animateCloudsCheck').addEventListener('change', (e) => {
+            state.animateClouds = e.target.checked;
+        });
+
+        // Local File Upload for Background (100% CORS-free!)
+        document.getElementById('bgFileUpload').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                const img = new Image();
+                img.onload = () => {
+                    state.bgImage = img;
+                    state.bgPreset = 'custom-image';
+                    document.querySelectorAll('.bg-preset-btn').forEach(b => b.classList.remove('ring-2', 'ring-pink-500'));
+                    showToast('Custom background uploaded!', 'success');
+                };
+                img.src = ev.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+
+        // Load Background from URL
+        document.getElementById('loadBgUrlBtn').addEventListener('click', () => {
+            const url = document.getElementById('bgUrlInput').value.trim();
+            if (!url) return;
+            loadExternalImage(
+                url,
+                (img) => {
+                    state.bgImage = img;
+                    state.bgPreset = 'custom-image';
+                    document.querySelectorAll('.bg-preset-btn').forEach(b => b.classList.remove('ring-2', 'ring-pink-500'));
+                    showToast('Background URL loaded and verified for MP4 export!', 'success');
+                },
+                () => {
+                    state.bgPreset = 'razcal-default';
+                    showToast('Remote server blocks video export (CORS). Using built-in HD meadow or upload file directly!', 'info');
+                }
+            );
+        });
+
+        // Local File Upload for Character Sprite
+        document.getElementById('charFileUpload').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                const img = new Image();
+                img.onload = () => {
+                    state.charImage = img;
+                    state.useVectorChar = false;
+                    showToast('Custom character sprite loaded!', 'success');
+                };
+                img.src = ev.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+
+        // Load Character from URL
+        document.getElementById('loadCharUrlBtn').addEventListener('click', () => {
+            const url = document.getElementById('charUrlInput').value.trim();
+            if (!url) return;
+            loadExternalImage(
+                url,
+                (img) => {
+                    state.charImage = img;
+                    state.useVectorChar = false;
+                    showToast('Character URL loaded and verified!', 'success');
+                },
+                () => {
+                    state.useVectorChar = true;
+                    showToast('Remote URL restricts canvas export (CORS). Using built-in HD character or upload PNG file!', 'info');
+                }
+            );
+        });
+
+        document.getElementById('useVectorCharBtn').addEventListener('click', () => {
+            state.useVectorChar = true;
+            showToast('Using built-in high-resolution meditating BB character!', 'info');
+        });
+
+        // Playback Controls
+        document.getElementById('restartTypingBtn').addEventListener('click', () => {
+            state.typingElapsed = 0;
+            state.isPaused = false;
+            document.getElementById('pauseIcon').className = 'ph-bold ph-pause text-amber-400 text-base';
+            document.getElementById('pauseText').textContent = 'Pause';
+        });
+
+        document.getElementById('togglePauseBtn').addEventListener('click', () => {
+            state.isPaused = !state.isPaused;
+            const icon = document.getElementById('pauseIcon');
+            const txt = document.getElementById('pauseText');
+            if (state.isPaused) {
+                icon.className = 'ph-bold ph-play text-emerald-400 text-base';
+                txt.textContent = 'Resume';
+            } else {
+                icon.className = 'ph-bold ph-pause text-amber-400 text-base';
+                txt.textContent = 'Pause';
+            }
+        });
+
+        // Export MP4 Button
+        document.getElementById('exportVideoBtn').addEventListener('click', recordAndExportMP4);
+
+        // Download Standalone HTML App for Local Offline/Desktop Use
+        document.getElementById('downloadAppHtmlBtn').addEventListener('click', () => {
+            const htmlContent = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+            const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+            triggerDownload(blob, 'razcal-animation-studio.html');
+            showToast('Saved razcal-animation-studio.html! Double-click it anytime on your computer.', 'success');
+        });
+
+        // Initialize on Window Load
+        window.onload = () => {
+            initDefaultAssets();
+            state.lastFrameTime = performance.now();
+            requestAnimationFrame(renderScene);
+        };
+    </script>
+</body>
+</html>
